@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Second Shift - First Room</title>
+<style>
+  body { margin:0; font-family:Arial, sans-serif; background:#f0f0f0; display:flex; flex-direction:column; align-items:center; }
+  #gameCanvas { background:#e0e0e0; border:2px solid #333; margin-top:20px; }
+  #controls { margin-top:10px; }
+  button { margin:0 5px; padding:5px 10px; }
+</style>
+</head>
+<body>
+<h1>Second Shift – First Shift (Demo)</h1>
+<canvas id="gameCanvas" width="500" height="500"></canvas>
+<div id="controls">
+  <button id="resetBtn">Reset Room</button>
+</div>
+<script>
+// Grid settings
+const TILE_SIZE = 50;
+const GRID_W = 10;
+const GRID_H = 10;
+
+// Game state
+let worker = {x:1, y:1, color:'#ff8800'}; // amber robot
+let cell = {x:3, y:3, carried:false, color:'#00aa00'};
+let socket = {x:8, y:8, occupied:false, color:'#0000ff'};
+
+function reset() {
+  worker.x = 1; worker.y = 1; worker.carry = false;
+  cell.x = 3; cell.y = 3; cell.carried = false;
+  socket.occupied = false;
+}
+
+function draw() {
+  const ctx = document.getElementById('gameCanvas').getContext('2d');
+  ctx.clearRect(0,0,500,500);
+  // draw grid
+  ctx.strokeStyle = '#bbb';
+  for(let i=0;i<=GRID_W;i++){
+    ctx.beginPath(); ctx.moveTo(i*TILE_SIZE,0); ctx.lineTo(i*TILE_SIZE,GRID_H*TILE_SIZE); ctx.stroke();
+  }
+  for(let j=0;j<=GRID_H;j++){
+    ctx.beginPath(); ctx.moveTo(0,j*TILE_SIZE); ctx.lineTo(GRID_W*TILE_SIZE,j*TILE_SIZE); ctx.stroke();
+  }
+  // draw socket
+  ctx.fillStyle = socket.color;
+  ctx.fillRect(socket.x*TILE_SIZE, socket.y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+  // draw cell if not carried
+  if(!cell.carried){
+    ctx.fillStyle = cell.color;
+    ctx.fillRect(cell.x*TILE_SIZE+10, cell.y*TILE_SIZE+10, TILE_SIZE-20, TILE_SIZE-20);
+  }
+  // draw worker
+  ctx.fillStyle = worker.color;
+  ctx.fillRect(worker.x*TILE_SIZE+5, worker.y*TILE_SIZE+5, TILE_SIZE-10, TILE_SIZE-10);
+  // if carrying, draw cell on worker
+  if(cell.carried){
+    ctx.fillStyle = cell.color;
+    ctx.fillRect(worker.x*TILE_SIZE+15, worker.y*TILE_SIZE+15, TILE_SIZE-30, TILE_SIZE-30);
+  }
+}
+
+function move(dx,dy){
+  const nx = worker.x + dx;
+  const ny = worker.y + dy;
+  if(nx<0||ny<0||nx>=GRID_W||ny>=GRID_H) return; // bounds
+  worker.x = nx; worker.y = ny;
+  // auto interaction on E key handled separately
+}
+
+function handleKey(e){
+  switch(e.key){
+    case 'ArrowUp': case 'w': case 'W': move(0,-1); break;
+    case 'ArrowDown': case 's': case 'S': move(0,1); break;
+    case 'ArrowLeft': case 'a': case 'A': move(-1,0); break;
+    case 'ArrowRight': case 'd': case 'D': move(1,0); break;
+    case 'e': case 'E': interact(); break;
+  }
+  draw();
+}
+
+function interact(){
+  // if adjacent to cell and not carrying, pick up
+  if(!cell.carried && Math.abs(worker.x - cell.x) + Math.abs(worker.y - cell.y) === 1){
+    cell.carried = true;
+    return;
+  }
+  // if carrying and adjacent to socket, insert
+  if(cell.carried && Math.abs(worker.x - socket.x) + Math.abs(worker.y - socket.y) === 1){
+    cell.carried = false;
+    socket.occupied = true;
+    // simple victory visual
+    alert('Success! Socket powered.');
+  }
+}
+
+document.addEventListener('keydown', handleKey);
+document.getElementById('resetBtn').addEventListener('click',()=>{reset();draw();});
+reset();
+draw();
+</script>
+</body>
+</html>
