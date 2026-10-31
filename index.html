@@ -1,105 +1,571 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Second Shift - First Room</title>
-<style>
-  body { margin:0; font-family:Arial, sans-serif; background:#f0f0f0; display:flex; flex-direction:column; align-items:center; }
-  #gameCanvas { background:#e0e0e0; border:2px solid #333; margin-top:20px; }
-  #controls { margin-top:10px; }
-  button { margin:0 5px; padding:5px 10px; }
-</style>
+  <meta charset="UTF-8">
+  <title>SECOND SHIFT - Robot Factory Puzzle</title>
+  <style>
+    * { box-sizing: border-box; touch-action: none; }
+    body {
+      margin: 0; min-height: 100vh;
+      background: #f5f1e8;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #3d3328;
+      padding: 40px;
+      display: flex; flex-direction: column; align-items: center;
+    }
+
+    h1 { margin: 0 0 20px; font-size: 2rem; }
+
+    #game-canvas {
+      border: 4px solid #8b7355;
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      cursor: pointer;
+    }
+
+    .controls {
+      margin-top: 16px; padding: 16px; border-radius: 8px;
+      background: rgba(244,240,228,0.8);
+      display: flex; flex-direction: column; gap: 8px; align-items: center;
+    }
+
+    button {
+      padding: 8px 16px; font-size: 14px; border: none;
+      border-radius: 4px; cursor: pointer;
+      background: #8b7355; color: #fff;
+    }
+    button:hover:not(:disabled) { background: #b87333; }
+    button:disabled { opacity: 0.5; }
+    button.record { background: #c26855; }
+    button.record.recording { background: #c05045; animation: pulse 0.8s infinite; }
+    button.secondary { background: #b87333; }
+
+    #info { font-size: 14px; max-width: 600px; text-align: center; }
+    #tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+    .tag { padding: 4px 10px; border-radius: 4px; color: #fff; font-size: 13px; background: #8090a0; }
+    .tag.recording { animation: pulse 0.8s infinite; }
+    .tag.recording-amber { background: #854d9c; }
+    .tag.recording-teal { background: #5c8a4a; }
+    .tag.recording-violet { background: #c68e29; }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+  </style>
 </head>
 <body>
-<h1>Second Shift – First Shift (Demo)</h1>
-<canvas id="gameCanvas" width="500" height="500"></canvas>
-<div id="controls">
-  <button id="resetBtn">Reset Room</button>
-</div>
-<script>
-// Grid settings
-const TILE_SIZE = 50;
-const GRID_W = 10;
-const GRID_H = 10;
+  <h1>SECOND SHIFT</h1>
 
-// Game state
-let worker = {x:1, y:1, color:'#ff8800'}; // amber robot
-let cell = {x:3, y:3, carried:false, color:'#00aa00'};
-let socket = {x:8, y:8, occupied:false, color:'#0000ff'};
+  <canvas id="game" width="600" height="450"></canvas>
 
-function reset() {
-  worker.x = 1; worker.y = 1; worker.carry = false;
-  cell.x = 3; cell.y = 3; cell.carried = false;
-  socket.occupied = false;
-}
+  <div class="controls">
+    <button class="secondary" id="reset">Reset Room</button>
+    <button class="record" id="record">Record</button>
+    <button class="secondary" id="save" disabled>Save</button>
+    <button class="secondary" id="play" disabled>Run Shift</button>
 
-function draw() {
-  const ctx = document.getElementById('gameCanvas').getContext('2d');
-  ctx.clearRect(0,0,500,500);
-  // draw grid
-  ctx.strokeStyle = '#bbb';
-  for(let i=0;i<=GRID_W;i++){
-    ctx.beginPath(); ctx.moveTo(i*TILE_SIZE,0); ctx.lineTo(i*TILE_SIZE,GRID_H*TILE_SIZE); ctx.stroke();
-  }
-  for(let j=0;j<=GRID_H;j++){
-    ctx.beginPath(); ctx.moveTo(0,j*TILE_SIZE); ctx.lineTo(GRID_W*TILE_SIZE,j*TILE_SIZE); ctx.stroke();
-  }
-  // draw socket
-  ctx.fillStyle = socket.color;
-  ctx.fillRect(socket.x*TILE_SIZE, socket.y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
-  // draw cell if not carried
-  if(!cell.carried){
-    ctx.fillStyle = cell.color;
-    ctx.fillRect(cell.x*TILE_SIZE+10, cell.y*TILE_SIZE+10, TILE_SIZE-20, TILE_SIZE-20);
-  }
-  // draw worker
-  ctx.fillStyle = worker.color;
-  ctx.fillRect(worker.x*TILE_SIZE+5, worker.y*TILE_SIZE+5, TILE_SIZE-10, TILE_SIZE-10);
-  // if carrying, draw cell on worker
-  if(cell.carried){
-    ctx.fillStyle = cell.color;
-    ctx.fillRect(worker.x*TILE_SIZE+15, worker.y*TILE_SIZE+15, TILE_SIZE-30, TILE_SIZE-30);
-  }
-}
+    <div id="info">Recording Amber</div>
+    <div id="tags"></div>
 
-function move(dx,dy){
-  const nx = worker.x + dx;
-  const ny = worker.y + dy;
-  if(nx<0||ny<0||nx>=GRID_W||ny>=GRID_H) return; // bounds
-  worker.x = nx; worker.y = ny;
-  // auto interaction on E key handled separately
-}
+    <div style="font-size: 13px; max-width: 600px; text-align: center;">
+      Click a robot to select it. WASD: move, E: interact, ESC: pause/resume
+    </div>
+  </div>
 
-function handleKey(e){
-  switch(e.key){
-    case 'ArrowUp': case 'w': case 'W': move(0,-1); break;
-    case 'ArrowDown': case 's': case 'S': move(0,1); break;
-    case 'ArrowLeft': case 'a': case 'A': move(-1,0); break;
-    case 'ArrowRight': case 'd': case 'D': move(1,0); break;
-    case 'e': case 'E': interact(); break;
-  }
-  draw();
-}
+  <script>
+    // ==========================================
+    // CONFIGURATION
+    // ==========================================
+    const TILE_SIZE = 60;
+    const SHIFT_DURATION = 12;
+    const TILES = { FLOOR: 0, WALL: 1 };
 
-function interact(){
-  // if adjacent to cell and not carrying, pick up
-  if(!cell.carried && Math.abs(worker.x - cell.x) + Math.abs(worker.y - cell.y) === 1){
-    cell.carried = true;
-    return;
-  }
-  // if carrying and adjacent to socket, insert
-  if(cell.carried && Math.abs(worker.x - socket.x) + Math.abs(worker.y - socket.y) === 1){
-    cell.carried = false;
-    socket.occupied = true;
-    // simple victory visual
-    alert('Success! Socket powered.');
-  }
-}
+    const WORKERS = ['A', 'B', 'C'];
+    const WORKER_NAMES = { 'A': 'Amber', 'B': 'Teal', 'C': 'Violet' };
+    const WORKER_COLORS = { 'A': '#c68e29', 'B': '#3d7a6f', 'C': '#854d9c' };
 
-document.addEventListener('keydown', handleKey);
-document.getElementById('resetBtn').addEventListener('click',()=>{reset();draw();});
-reset();
-draw();
-</script>
+    const DIRS = [
+      { dx: 0, dy: -1 }, { dx: 1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
+    ];
+
+    // ==========================================
+    // ROOMS
+    // ==========================================
+    const ROOMS = [
+      {
+        name: 'FIRST SHIFT',
+        gridSize: [10, 8],
+        template: [
+          'WWWWWWWWWW',
+          'WSS      W',
+          'W          W',
+          'W      R  W',
+          'W    C    W',
+          'W          W',
+          'WS    P    W',
+          'WWWWWWWWWW',
+        ],
+        placeFeatures: () => ({
+          robots: { A: { x: 1, y: 7, facing: { dx: 1, dy: 0 } } },
+          machinery: {
+            operator: { x: 3, y: 3, powered: false },
+            pressure: { x: 6, y: 4, powered: false },
+            socket: { x: 6, y: 1, powered: false }
+          },
+          cell: { x: 4, y: 4 }
+        })
+      },
+      {
+        name: 'HELPING HANDS',
+        gridSize: [10, 10],
+        template: [
+          'WWWWWWWWWW',
+          'W        W',
+          'W  R     W',
+          'W  C     W',
+          'W        W',
+          'W   P    W',
+          'W  S     W',
+          'WWWWWWWWWW',
+          'W    G   W',
+          'WWWWWWWWWW',
+        ],
+        placeFeatures: () => ({
+          robots: {
+            A: { x: 1, y: 7, facing: { dx: 1, dy: 0 } },
+            B: { x: 1, y: 2, facing: { dx: 1, dy: 0 } }
+          },
+          machinery: {
+            operator: { x: 2, y: 2, powered: false },
+            pressure: { x: 5, y: 2, powered: false },
+            socket: { x: 6, y: 2, powered: false },
+            gate: { x: 7, y: 1, powered: false, w: 1, h: 4 }
+          },
+          cell: { x: 3, y: 2 }
+        })
+      },
+      {
+        name: 'CHAIN REACTION',
+        gridSize: [12, 10],
+        template: [
+          'WWWWWWWWWWWW',
+          'W          W',
+          'W  R       W',
+          'W  C       W',
+          'W   P      W',
+          'W   B1     W',
+          'W          W',
+          'W  S1      W',
+          'WWWWWWWWWWWW',
+          'WWWWWWWWWWWW',
+          'W    S2    W',
+          'WWWWWWWWWWWW',
+        ],
+        placeFeatures: () => ({
+          robots: {
+            A: { x: 1, y: 7, facing: { dx: 1, dy: 0 } },
+            B: { x: 1, y: 2, facing: { dx: 1, dy: 0 } },
+            C: { x: 1, y: 4, facing: { dx: 1, dy: 0 } }
+          },
+          machinery: {
+            operator: { x: 2, y: 2, powered: false },
+            pressure: { x: 4, y: 2, powered: false },
+            bridgeDeployer: { x: 5, y: 3, powered: false, deployed: false, w: 1, h: 3 },
+            socket1: { x: 7, y: 2, powered: false },
+            gate: { x: 7, y: 4, powered: false, w: 1, h: 3 },
+            motorController: { x: 9, y: 4, powered: false },
+            mirrorController: { x: 9, y: 5, powered: false },
+            finalSocket: { x: 11, y: 6, powered: false }
+          },
+          cell: { x: 3, y: 2 }
+        })
+      }
+    ];
+
+    // ==========================================
+    // STATE
+    // ==========================================
+    const state = {
+      roomIndex: 0,
+      grid: [],
+      robots: {},
+      cell: null,
+      sockets: [],
+      machinery: {},
+      time: 0, endTime: SHIFT_DURATION,
+      state: 'ready',
+      editingWorker: 'A',
+      recordingTicker: 0,
+      pendingMove: null, pendingInteract: false
+    };
+
+    const recordings = { 'A': [], 'B': [], 'C': [] };
+
+    // Ensure global audio context
+    let audioCtx = null;
+    
+    function audio() {
+      if (!audioCtx) {
+        try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+        catch(e) { return null; }
+      }
+      return audioCtx;
+    }
+
+    function playTone(freq, duration) {
+      const ctx = audio();
+      if (!ctx) return;
+      try {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + duration);
+      } catch(e) {}
+    }
+
+    // ==========================================
+    // SETUP
+    // ==========================================
+    function setupRoom(idx) {
+      const room = ROOMS[idx];
+      const [w, h] = room.gridSize;
+      
+      state.grid = Array(h).fill(null).map(() => Array(w).fill(0));
+      
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (room.template[y][x] === 'W') state.grid[y][x] = 1;
+        }
+      }
+      
+      state.robots = {};
+      state.cell = null;
+      state.sockets = [];
+      state.machinery = room.placeFeatures();
+      
+      // Place robots
+      const slots = [];
+      for (let y = 0; y < h && slots.length < WORKERS.length; y++) {
+        for (let x = 2; x < w && slots.length < WORKERS.length; x++) {
+          if (state.grid[y][x] === 0 && !slots.includes(`${x},${y}`)) slots.push(`${x},${y}`);
+        }
+      }
+      
+      slots.slice(0, WORKERS.length).forEach(s => {
+        const [x, y] = s.split(',');
+        state.robots[WORKERS[slots.indexOf(s)]] = {
+          id: WORKERS[slots.indexOf(s)], x: parseInt(x), y: parseInt(y),
+          facing: { dx: 1, dy: 0 }, carry: null
+        };
+      });
+      
+      if (state.machinery.socket) {
+        state.sockets.push(state.machinery.socket);
+        delete state.machinery.socket;
+      }
+      
+      state.time = 0; state.endTime = SHIFT_DURATION;
+      state.state = 'ready'; state.editingWorker = 'A';
+      state.recordingTicker = 0; state.pendingMove = null; state.pendingInteract = false;
+    }
+
+    function reset() { state.state = 'ready'; state.time = 0; recordings['A'] = []; recordings['B'] = []; recordings['C'] = []; setupRoom(state.roomIndex); }
+
+    // ==========================================
+    // RENDERING
+    // ==========================================
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    function paint() {
+      ctx.fillStyle = '#f5f1e8';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      const ox = (canvas.width - state.grid[0].length * TILE_SIZE) / 2;
+      const oy = (canvas.height - state.grid.length * TILE_SIZE) / 2;
+      
+      // Grid
+      for (let y = 0; y < state.grid.length; y++) {
+        for (let x = 0; x < state.grid[y].length; x++) {
+          const px = ox + x * TILE_SIZE, py = oy + y * TILE_SIZE;
+          if (state.grid[y][x] === 1) {
+            ctx.fillStyle = '#8b7355';
+            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+            ctx.fillStyle = '#a08070';
+            ctx.fillRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8);
+          } else {
+            ctx.fillStyle = '#e8e0d5';
+            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+          }
+        }
+      }
+      
+      // Machinery
+      for (const [type, mg] of Object.entries(state.machinery)) {
+        const px = ox + mg.x * TILE_SIZE, py = oy + mg.y * TILE_SIZE;
+        if (type === 'operator') {
+          ctx.fillStyle = mg.powered ? '#5c8a4a' : '#8090a0';
+          ctx.fillRect(px + 16, py + 16, 28, 28);
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 12px sans-serif';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(mg.powered ? 'OP' : '???', px + 30, py + 30);
+        } else if (type === 'pressure') {
+          ctx.fillStyle = mg.powered ? '#5c8a4a' : '#c26855';
+          ctx.fillRect(px + 8, py + 28, 44, 24);
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 12px';
+          ctx.fillText(mg.powered ? 'ON' : 'OFF', px + 30, py + 40);
+        } else if (type === 'gate') {
+          ctx.fillStyle = mg.powered ? '#e8e0d5' : '#8b7355';
+          ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+        } else if (type === 'socket') {
+          ctx.fillStyle = mg.powered ? '#5c8a4a' : '#665745';
+          ctx.fillRect(px + 18, py + 18, 24, 24);
+        }
+      }
+      
+      // Sockets
+      for (const s of state.sockets) {
+        const px = ox + s.x * TILE_SIZE, py = oy + s.y * TILE_SIZE;
+        ctx.fillStyle = s.powered ? '#5c8a4a' : '#665745';
+        ctx.fillRect(px + 18, py + 18, 24, 24);
+      }
+      
+      // Cell
+      if (state.cell) {
+        const px = ox + state.cell.x * TILE_SIZE, py = oy + state.cell.y * TILE_SIZE;
+        ctx.fillStyle = '#5c8a4a';
+        ctx.fillRect(px + 18, py + 18, 24, 24);
+        ctx.fillStyle = '#aaddbb'; ctx.font = 'bold 16px sans-serif';
+        ctx.fillText('C', px + 30, py + 30);
+      }
+      
+      // Robots
+      for (const id in state.robots) {
+        const r = state.robots[id];
+        const px = ox + r.x * TILE_SIZE, py = oy + r.y * TILE_SIZE;
+        drawRobot(ctx, px, py, r.facing, WORKER_COLORS[id], r.carry, id);
+      }
+      
+      if (state.state === 'recording') {
+        ctx.fillStyle = 'rgba(194, 104, 85, 0.3)';
+        ctx.fillRect(ox, oy, state.grid[0].length * TILE_SIZE, state.grid.length * TILE_SIZE);
+      }
+    }
+
+    function drawRobot(ctx, x, y, facing, color, carry, id) {
+      const cx = x + TILE_SIZE/2, cy = y + TILE_SIZE/2;
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cx, cy, 16, 0, Math.PI*2);
+      ctx.fill(); ctx.strokeStyle = '#3d3328'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx-5, cy-3, 4, 0, Math.PI*2);
+      ctx.arc(cx+5, cy-3, 4, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#3d3328'; ctx.beginPath(); ctx.arc(cx-5, cy-3, 1.5, 0, Math.PI*2);
+      ctx.arc(cx+5, cy-3, 1.5, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(cx, cy-16); ctx.lineTo(cx, cy-22); ctx.stroke();
+      ctx.fillStyle = '#c05045'; ctx.beginPath(); ctx.arc(cx, cy-23, 3, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#3d3328'; ctx.font = 'bold 12px sans-serif';
+      ctx.fillText(id, cx, cy-32);
+      if (state.editingWorker === id) {
+        ctx.strokeStyle = '#f5a74d'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cy, 22, 0, Math.PI*2); ctx.stroke();
+      }
+    }
+
+    // ==========================================
+    // INPUT
+    // ==========================================
+    canvas.addEventListener('click', e => {
+      if (state.state === 'playback') return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+      const rx = (e.clientX - rect.left) * scaleX, ry = (e.clientY - rect.top) * scaleY;
+      const ox = (canvas.width - state.grid[0].length * TILE_SIZE) / 2;
+      const oy = (canvas.height - state.grid.length * TILE_SIZE) / 2;
+      const gx = Math.floor((rx - ox) / TILE_SIZE), gy = Math.floor((ry - oy) / TILE_SIZE);
+      if (gx >= 0 && gx < state.grid[0].length && gy >= 0 && gy < state.grid.length) {
+        for (const id in state.robots) {
+          if (state.robots[id].x === gx && state.robots[id].y === gy) {
+            state.editingWorker = id; updateUI(); paint(); return;
+          }
+        }
+      }
+    });
+
+    document.addEventListener('keydown', e => {
+      if (state.state === 'paused') return;
+      let handled = false;
+      for (const dir of DIRS) {
+        if (dir.dx && dir.dy) continue;
+        let nx = null, ny = null;
+        if (e.key === 'w' || e.key === 'ArrowUp') ny = -1;
+        else if (e.key === 's' || e.key === 'ArrowDown') ny = 1;
+        else if (e.key === 'a' || e.key === 'ArrowLeft') nx = -1;
+        else if (e.key === 'd' || e.key === 'ArrowRight') nx = 1;
+        else if (e.key === 'e') { handled = true; break; }
+        else if (e.key === 'Escape') {
+          state.state = state.state === 'paused' ? 'ready' : state.state === 'playback' ? 'ready' : 'paused';
+          handled = true; break;
+        }
+        if (nx !== null && state.pendingMove === null && canMove(state.editingWorker, nx, ny)) {
+          state.pendingMove = { id: state.editingWorker, dx: nx, dy: ny }; handled = true;
+        }
+      }
+      if (handled) e.preventDefault();
+    });
+
+    function canMove(id, dx, dy) {
+      const r = state.robots[id];
+      if (!r) return false;
+      const nx = r.x + dx, ny = r.y + dy;
+      if (nx < 0 || nx >= state.grid[0].length || ny < 0 || ny >= state.grid.length) return false;
+      if (state.grid[ny][nx] === 1) return false;
+      if (state.grid[ny][nx] === 9 && (!state.machinery.gate || !state.machinery.gate.powered)) return false;
+      return true;
+    }
+
+    function executeMove(id, dx, dy) {
+      const r = state.robots[id];
+      if (!r) return;
+      const oldx = r.x, oldy = r.y, newx = r.x + dx, newy = r.y + dy;
+      const plate = state.machinery.pressure;
+      if (plate && plate.x === oldx && plate.y === oldy) plate.powered = false;
+      if (plate && plate.x === newx && plate.y === newy) plate.powered = true;
+      if (state.grid[oldy][oldx] === 9) {
+        const g = state.machinery.gate;
+        if (g && g.x === oldx && g.y === oldy) g.powered = false;
+      }
+      r.x = newx; r.y = newy; r.facing = { dx, dy };
+    }
+
+    function executeInteract(id) {
+      const r = state.robots[id];
+      if (!r) return false;
+      for (const dir of DIRS) {
+        if (!dir.dx && !dir.dy) return false;
+        const nx = r.x + dir.dx, ny = r.y + dir.dy;
+        if (!r.carry && state.cell && state.cell.x === nx && state.cell.y === ny) {
+          r.carry = state.cell; state.cell = null; playTone(440, 0.1); return true;
+        }
+        if (r.carry && !state.cell) {
+          const s = state.sockets.find(s => s.x === nx && s.y === ny);
+          if (!s) return false;
+          r.carry = null; state.cell = r.carry; s.powered = true;
+          playTone(400, 0.1); return true;
+        }
+      }
+      return false;
+    }
+
+    // ==========================================
+    // TICK
+    // ==========================================
+    let tickCounter = 0;
+
+    function tick() {
+      if (state.state === 'paused') return;
+      if (state.state === 'recording') state.recordingTicker++;
+      let did = false;
+      if (state.pendingMove) {
+        const { id, dx, dy } = state.pendingMove;
+        if (canMove(id, dx, dy)) executeMove(id, dx, dy); did = true;
+      }
+      if (state.pendingInteract && did) { executeInteract(state.editingWorker); did = true; }
+      if (did) state.time = Math.max(0, state.time - 1/60);
+      tickCounter++;
+    }
+
+    // ==========================================
+    // RECORDING
+    // ==========================================
+    function updateUI() {
+      const tags = document.getElementById('tags'), info = document.getElementById('info');
+      const btnSave = document.getElementById('save'), btnPlay = document.getElementById('play');
+      const btnRecord = document.getElementById('record');
+      tags.innerHTML = '';
+      let hasRec = false, workers = 0;
+      for (const [w, rec] of Object.entries(recordings)) {
+        if (rec && rec.length > 0) { hasRec = true; workers++;
+          const t = document.createElement('span');
+          t.className = 'tag recording recording-' + w.toLowerCase();
+          t.textContent = WORKER_NAMES[w] + ' (' + rec.length + ')';
+          tags.appendChild(t);
+        }
+      }
+      if (state.state === 'ready') {
+        info.textContent = 'Recording ' + WORKER_NAMES[state.editingWorker];
+        btnSave.disabled = true; btnPlay.disabled = workers < 1;
+        btnRecord.className = recordings[state.editingWorker] && recordings[state.editingWorker].length > 0 ? 'record recording' : 'record';
+        btnRecord.textContent = recordings[state.editingWorker] && recordings[state.editingWorker].length > 0 ? 'Replace' : 'Record';
+      } else if (state.state === 'recording') {
+        info.textContent = 'Recording ' + WORKER_NAMES[state.editingWorker] + '...';
+        btnSave.disabled = false; btnPlay.disabled = workers < 1;
+        btnRecord.className = 'record recording'; btnRecord.textContent = 'Stop & Save';
+      } else if (state.state === 'paused') {
+        info.textContent = 'Paused: ' + state.time.toFixed(1) + 's';
+      } else if (state.state === 'playback') {
+        info.textContent = 'Shift: ' + state.time.toFixed(1) + '/' + SHIFT_DURATION + 's';
+        btnPlay.disabled = true; btnPlay.textContent = 'Running...';
+      }
+    }
+
+    document.getElementById('reset').onclick = () => reset();
+    document.getElementById('record').onclick = () => {
+      if (state.state === 'recording') { recordings[state.editingWorker] = []; finishRecording(); }
+      else if (recordings[state.editingWorker] && recordings[state.editingWorker].length > 0) { recordings[state.editingWorker] = []; state.recordingTicker = 0; }
+      else { state.recordingTicker = 0; state.state = 'recording'; playTone(660, 0.2); }
+      updateUI();
+    };
+    document.getElementById('save').onclick = finishRecording;
+    function finishRecording() { if (state.state === 'recording') state.state = 'ready'; playTone(880, 0.2); }
+
+    document.getElementById('play').onclick = () => {
+      const has = Object.values(recordings).some(r => r && r.length > 0);
+      if (!has) { playTone(200, 0.15); return; }
+      state.state = 'playback'; state.time = 0;
+      runPlayback();
+    };
+
+    function runPlayback() {
+      const wks = Object.keys(recordings);
+      let frameIdx = { 'A': 0, 'B': 0, 'C': 0 };
+      const start = performance.now();
+
+      function loop() {
+        if (state.state !== 'playback') return;
+        state.time = Math.min(state.time + 1/60, SHIFT_DURATION);
+        if (state.time >= SHIFT_DURATION) { state.state = 'ready'; updateUI(); return; }
+
+        const tick = Math.floor(state.time * 60);
+        for (const w of wks) {
+          const rec = recordings[w];
+          while (frameIdx[w] < rec.length && rec[frameIdx[w]].tick === tick) {
+            const f = rec[frameIdx[w]];
+            if (f.robotState && state.robots[w]) {
+              state.robots[w].x = f.robotState.x;
+              state.robots[w].y = f.robotState.y;
+              state.robots[w].facing = f.robotState.facing || { dx: 1, dy: 0 };
+              state.robots[w].carry = f.robotState.carry;
+              if (f.robotState.carry) state.cell = { x: f.robotState.carry.x, y: f.robotState.carry.y };
+              else if (!Object.values(state.robots).some(r => r?.carry)) state.cell = null;
+            }
+            frameIdx[w]++;
+          }
+        }
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+    }
+
+    // ==========================================
+    // LOOP
+    // ==========================================
+    setInterval(() => { tick(); paint(); updateUI(); }, 1000 / 60);
+
+    reset();
+  </script>
 </body>
 </html>
